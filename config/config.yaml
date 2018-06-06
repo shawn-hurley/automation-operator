@@ -1,3 +1,12 @@
-apiVersion: delete.me/v1
-kind: Me
-projectName: automation-operator
+---
+APBs:
+  Database:
+    api-version: app.example.com/v1
+    kind: Database
+    image: docker.io/shurley/postgresql-apb
+    plan: dev
+  Appservice:
+    api-version: app.example.com/v1
+    kind: AppService
+    image: docker.io/shurley/app-apb
+    plan: dev

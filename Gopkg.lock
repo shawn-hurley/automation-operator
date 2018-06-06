@@ -32,8 +32,8 @@
     "clients",
     "runtime"
   ]
-  revision = "d8153c4f6bb94d63d932b7e0e7aa23e20b588277"
-  version = "0.2.1"
+  revision = "d86f8bb04dd1f8ac69cd58bae38716ed8180a065"
+  version = "0.2.3"
 
 [[projects]]
   name = "github.com/coreos/etcd"
@@ -590,6 +590,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "14e12de391bbb9b79d2f484707d497297c9f1283f725357b1c188eafecb1f5fd"
+  inputs-digest = "71cda6552df0353eac06119598f90d40875583d3db96ecaba4a99a9487fdfa97"
   solver-name = "gps-cdcl"
   solver-version = 1

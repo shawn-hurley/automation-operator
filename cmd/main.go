@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"runtime"
 	"strings"
@@ -16,7 +19,6 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	yaml "gopkg.in/yaml.v2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -42,20 +44,58 @@ func printVersion() {
 	logrus.Infof("operator-sdk Version: %v", sdkVersion.Version)
 }
 
+type apb struct {
+	Version string `yaml:"api-version" json:"api-version"`
+	Kind    string `yaml:"kind" json:"kind"`
+	Image   string `yaml:"image" json:"image"`
+	Plan    string `yaml:"plan" json:"plan"`
+}
+
 func main() {
 	printVersion()
 
-	resource := viper.GetString("api-version")
-	kind := viper.GetString("kind")
+	var apbs []apb
+	if c := viper.GetString("configFile"); c != "" {
+		// Only use the config file.
+		b, err := ioutil.ReadFile(c)
+		if err != nil {
+			logrus.Fatalf("Failed to get config file: %v", err)
+		}
+		viper.SetConfigType("yaml")
+		err = viper.ReadConfig(bytes.NewBuffer(b))
+		if err != nil {
+			logrus.Fatalf("Failed to get config file: %v", err)
+		}
+		m := viper.GetStringMap("APBs")
+		logrus.Infof("config output: %#v", m)
+		for _, o := range m {
+			d, err := json.Marshal(o)
+			if err != nil {
+				logrus.Fatalf("Failed to get config file: %v", err)
+			}
+			a := apb{}
+			err = json.Unmarshal([]byte(d), &a)
+			if err != nil {
+				logrus.Fatalf("Failed to get config file: %v", err)
+			}
+			logrus.Infof("config output: %#v", a)
+			apbs = append(apbs, a)
+		}
+	} else {
+		apbs = append(apbs, apb{
+			Version: viper.GetString("api-version"),
+			Kind:    viper.GetString("kind"),
+			Image:   viper.GetString("apb-image"),
+			Plan:    viper.GetString("plan"),
+		})
+	}
+
 	namespace, err := k8sutil.GetWatchNamespace()
 	if err != nil {
 		logrus.Fatalf("Failed to get watch namespace: %v", err)
 	}
 	resyncPeriod := viper.GetInt("resync")
-	logrus.Infof("Watching %s, %s, %s, %d", resource, kind, namespace, resyncPeriod)
-	spec := getSpec(viper.GetString("apb-image"))
-	//register type with gvk
-	registerType(resource, kind)
+
 	// Initialize Cluster Config.
 	bundle.InitializeClusterConfig(bundle.ClusterConfig{
 		PullPolicy:    "always",
@@ -64,31 +104,37 @@ func main() {
 		KeepNamespace: true,
 	})
 
-	sdk.Watch(resource, kind, namespace, resyncPeriod)
-	plan, ok := spec.GetPlan(viper.GetString("plan"))
-	if !ok {
-		logrus.Errorf("unable to find plan: %v in the spec for apb-image: %v", viper.GetString("plan"), viper.GetString("apb-image"))
-		os.Exit(2)
-	}
-	sdk.Handle(stub.NewHandler(map[string]crd.SpecPlan{
-		fmt.Sprintf("%v:%v", resource, kind): crd.SpecPlan{
+	m := map[string]crd.SpecPlan{}
+	for _, a := range apbs {
+		spec := getSpec(a.Image)
+		//register type with gvk
+		registerType(a.Version, a.Kind)
+
+		logrus.Infof("Watching %s, %s, %s, %d", a.Version, a.Kind, namespace, resyncPeriod)
+		sdk.Watch(a.Version, a.Kind, namespace, resyncPeriod)
+		plan, ok := spec.GetPlan(a.Plan)
+		if !ok {
+			logrus.Errorf("unable to find plan: %v in the spec for apb-image: %v", viper.GetString("plan"), viper.GetString("apb-image"))
+			os.Exit(2)
+		}
+		m[fmt.Sprintf("%v:%v", a.Version, a.Kind)] = crd.SpecPlan{
 			Spec: spec,
 			Plan: plan,
-		},
-	}))
+		}
+	}
+	sdk.Handle(stub.NewHandler(m))
 	sdk.Run(context.TODO())
 }
 
 func registerType(resource, kind string) {
 	gv := strings.Split(resource, "/")
-	schemeGroupVersion := schema.GroupVersion{Group: gv[0], Version: gv[1]}
+	//	schemeGroupVersion := schema.GroupVersion{Group: gv[0], Version: gv[1]}
 	schemeBuilder := k8sruntime.NewSchemeBuilder(func(s *k8sruntime.Scheme) error {
 		s.AddKnownTypeWithName(schema.GroupVersionKind{
 			Group:   gv[0],
 			Version: gv[1],
 			Kind:    kind,
 		}, &unstructured.Unstructured{})
-		metav1.AddToGroupVersion(s, schemeGroupVersion)
 		return nil
 	})
 	k8sutil.AddToSDKScheme(schemeBuilder.AddToScheme)

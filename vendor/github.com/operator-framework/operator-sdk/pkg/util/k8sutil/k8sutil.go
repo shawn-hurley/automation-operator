@@ -44,7 +44,7 @@ func init() {
 }
 
 func decoder(gv schema.GroupVersion) runtime.Decoder {
-	codec := codecs.UniversalDecoder(gv)
+	codec := codecs.UniversalDeserializer()
 	return codec
 }
 

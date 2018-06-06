@@ -40,7 +40,6 @@ func (h *Handler) Handle(ctx context.Context, event sdk.Event) error {
 	if s, ok := h.bundles[getGVKString(event)]; ok {
 		// Should be unstructured type and we should be able to get the "spec" for the parameters
 		// we should unmarshall the "status" section, if available to the status section
-		logrus.Infof("here - %#v", event.Object)
 		// Need to get json schema
 		handleSpecEvent(s, event)
 	}
@@ -60,6 +59,7 @@ func handleSpecEvent(s crd.SpecPlan, event sdk.Event) {
 		logrus.Infof("unable to create unstructured object from event object")
 		return
 	}
+	logrus.Infof("gvk: %v Name: %v", o.GroupVersionKind(), o.GetName())
 	crStatus := crd.BundleStatus{}
 	// Using status as a hardcoded value TODO: make const?
 	status, ok := o.UnstructuredContent()[statusKey]
@@ -200,7 +200,9 @@ func launchAPBProvision(specMap map[string]interface{}, specPlan crd.SpecPlan, s
 		Parameters: &p,
 	}
 	logrus.Infof("using service instance : %v", si)
-	ex := bundle.NewExecutor()
+	ex := bundle.NewExecutor(bundle.ExecutorConfig{
+		SkipCreateNS: true,
+	})
 	channel := ex.Provision(&si)
 	go func() {
 		for status := range channel {
